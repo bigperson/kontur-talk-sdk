@@ -31,10 +31,24 @@ jobs:
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
       
-    - name: Verify PHPUnit config file
+    - name: Verify PHPUnit config files
       run: |
-        ls -la phpunit.xml*
-        cat phpunit.xml
+        echo "Checking for phpunit.xml:"
+        ls -la phpunit.xml 2>/dev/null || echo "phpunit.xml not found"
+        echo "Checking for phpunit.xml.dist:"
+        ls -la phpunit.xml.dist 2>/dev/null || echo "phpunit.xml.dist not found"
+        if [ -f phpunit.xml.dist ]; then
+          echo "Content of phpunit.xml.dist:"
+          cat phpunit.xml.dist
+        fi
       
     - name: Run tests
-      run: vendor/bin/phpunit -c phpunit.xml 
+      run: |
+        if [ -f phpunit.xml.dist ]; then
+          vendor/bin/phpunit -c phpunit.xml.dist
+        elif [ -f phpunit.xml ]; then
+          vendor/bin/phpunit -c phpunit.xml
+        else
+          echo "No PHPUnit configuration file found!"
+          exit 1
+        fi 
