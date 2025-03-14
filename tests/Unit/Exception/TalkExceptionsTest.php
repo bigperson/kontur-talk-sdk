@@ -22,15 +22,15 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(400, [], $responseBody)
         );
-        
+
         $exception = new TalkApiException($clientException);
-        
+
         $this->assertEquals('Bad request', $exception->getMessage());
         $this->assertEquals(400, $exception->getCode());
         $this->assertEquals('Bad request', $exception->getErrorMessage());
         $this->assertSame($clientException, $exception->getPrevious());
     }
-    
+
     public function testTalkApiExceptionFromInvalidJsonResponse(): void
     {
         $responseBody = 'Invalid JSON';
@@ -39,15 +39,15 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(400, [], $responseBody)
         );
-        
+
         $exception = new TalkApiException($clientException);
-        
+
         $this->assertEquals('Bad request', $exception->getMessage());
         $this->assertEquals(400, $exception->getCode());
         $this->assertEquals('Unknown error', $exception->getErrorMessage());
         $this->assertSame($clientException, $exception->getPrevious());
     }
-    
+
     public function testTalkApiExceptionFromResponseWithoutErrorMessage(): void
     {
         $responseBody = json_encode(['otherField' => 'Some value']);
@@ -56,15 +56,15 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(400, [], $responseBody)
         );
-        
+
         $exception = new TalkApiException($clientException);
-        
+
         $this->assertEquals('Bad request', $exception->getMessage());
         $this->assertEquals(400, $exception->getCode());
         $this->assertEquals('Unknown error', $exception->getErrorMessage());
         $this->assertSame($clientException, $exception->getPrevious());
     }
-    
+
     public function testTalkClientExceptionFromServerException(): void
     {
         $serverException = new ServerException(
@@ -72,14 +72,14 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(500)
         );
-        
+
         $exception = new TalkClientException($serverException);
-        
+
         $this->assertEquals('Server error', $exception->getMessage());
         $this->assertEquals(500, $exception->getCode());
         $this->assertSame($serverException, $exception->getPrevious());
     }
-    
+
     public function testTalkNotFoundExceptionFromClientException(): void
     {
         $clientException = new ClientException(
@@ -87,14 +87,14 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(404)
         );
-        
+
         $exception = new TalkNotFoundException($clientException);
-        
+
         $this->assertEquals('Not found', $exception->getMessage());
         $this->assertEquals(404, $exception->getCode());
         $this->assertSame($clientException, $exception->getPrevious());
     }
-    
+
     public function testTalkRateLimitExceptionFromClientException(): void
     {
         $clientException = new ClientException(
@@ -102,44 +102,44 @@ class TalkExceptionsTest extends TestCase
             new Request('GET', 'test-endpoint'),
             new Response(429)
         );
-        
+
         $exception = new TalkRateLimitException($clientException);
-        
+
         $this->assertEquals('Rate limit exceeded', $exception->getMessage());
         $this->assertEquals(429, $exception->getCode());
         $this->assertSame($clientException, $exception->getPrevious());
     }
-    
+
     public function testTalkApiExceptionWithCustomMessage(): void
     {
         $exception = new TalkApiException('Custom message', 400);
-        
+
         $this->assertEquals('Custom message', $exception->getMessage());
         $this->assertEquals(400, $exception->getCode());
         $this->assertEquals('Unknown error', $exception->getErrorMessage());
     }
-    
+
     public function testTalkClientExceptionWithCustomMessage(): void
     {
         $exception = new TalkClientException('Custom message', 500);
-        
+
         $this->assertEquals('Custom message', $exception->getMessage());
         $this->assertEquals(500, $exception->getCode());
     }
-    
+
     public function testTalkNotFoundExceptionWithCustomMessage(): void
     {
         $exception = new TalkNotFoundException('Custom message', 404);
-        
+
         $this->assertEquals('Custom message', $exception->getMessage());
         $this->assertEquals(404, $exception->getCode());
     }
-    
+
     public function testTalkRateLimitExceptionWithCustomMessage(): void
     {
         $exception = new TalkRateLimitException('Custom message', 429);
-        
+
         $this->assertEquals('Custom message', $exception->getMessage());
         $this->assertEquals(429, $exception->getCode());
     }
-} 
+}
