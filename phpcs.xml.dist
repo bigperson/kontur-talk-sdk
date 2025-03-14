@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<ruleset name="KonturTalkSdk">
+    <description>The coding standard for Kontur Talk SDK.</description>
+
+    <file>src</file>
+    <file>tests</file>
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="parallel" value="8"/>
+    <arg value="sp"/>
+
+    <!-- Include PSR-12 standard -->
+    <rule ref="PSR12"/>
+
+    <!-- Include some sniffs from other standards -->
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="120"/>
+            <property name="absoluteLineLimit" value="0"/>
+        </properties>
+    </rule>
+    <rule ref="Generic.PHP.ForbiddenFunctions">
+        <properties>
+            <property name="forbiddenFunctions" type="array">
+                <element key="sizeof" value="count"/>
+                <element key="delete" value="unset"/>
+                <element key="print" value="echo"/>
+                <element key="is_null" value="null"/>
+                <element key="create_function" value="null"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Exclude specific rules -->
+    <rule ref="PSR12.Classes.AnonClassDeclaration.SpaceAfterKeyword">
+        <severity>0</severity>
+    </rule>
+
+    <!-- Exclude vendor directory -->
+    <exclude-pattern>/vendor</exclude-pattern>
+</ruleset> 

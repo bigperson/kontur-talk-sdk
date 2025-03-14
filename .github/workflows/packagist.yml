@@ -1,0 +1,25 @@
+name: Update Packagist
+
+on:
+  push:
+    tags:
+      - '*'
+  release:
+    types: [created]
+
+jobs:
+  packagist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Notify Packagist
+        env:
+          PACKAGIST_PACKAGE_NAME: bigperson/kontur-talk-sdk
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_API_TOKEN: ${{ secrets.PACKAGIST_API_TOKEN }}
+        run: |
+          curl -XPOST -H'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_API_TOKEN}" \
+            -d'{"repository":{"url":"https://packagist.org/packages/${PACKAGIST_PACKAGE_NAME}"}}' 

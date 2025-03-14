@@ -1,0 +1,29 @@
+# Composer
+/vendor/
+composer.phar
+composer.lock
+
+# PHPUnit
+/phpunit.xml
+/.phpunit.result.cache
+/.phpunit.cache/
+
+# PHP_CodeSniffer
+/.phpcs-cache
+
+# PHPStan
+/.phpstan-cache
+
+# IDE & System Files
+.idea/
+.vscode/
+*.sublime-*
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local 
