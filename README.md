@@ -5,6 +5,8 @@
 [![Total Downloads](https://poser.pugx.org/bigperson/kontur-talk-sdk/downloads)](https://packagist.org/packages/bigperson/kontur-talk-sdk)
 [![License](https://poser.pugx.org/bigperson/kontur-talk-sdk/license)](https://packagist.org/packages/bigperson/kontur-talk-sdk)
 
+[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://www.php.net/)
+
 Неофициальный PHP SDK для удобной интеграции с API сервиса Контур.Толк.
 
 > **Важно:** Данный SDK не является официальным продуктом компании СКБ Контур и разрабатывается независимо.
