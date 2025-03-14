@@ -14,7 +14,7 @@ jobs:
       run: |
         curl -XPOST -H'content-type:application/json' \
         'https://packagist.org/api/update-package?username=${{ env.PACKAGIST_USERNAME }}&apiToken=${{ env.PACKAGIST_API_TOKEN }}' \
-        -d'{"repository":{"url":"https://packagist.org/packages/kontur/talk-sdk"}}'
+        -d'{"repository":{"url":"https://github.com/bigperson/kontur-talk-sdk"}}'
     
     env:
       PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}

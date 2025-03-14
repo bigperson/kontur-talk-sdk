@@ -31,7 +31,7 @@ jobs:
       run: vendor/bin/phpcs --standard=phpcs.xml.dist
       
     - name: Run phpstan
-      run: vendor/bin/phpstan analyse --level=5 src
+      run: vendor/bin/phpstan analyse
       
     - name: Run phpunit
       run: vendor/bin/phpunit

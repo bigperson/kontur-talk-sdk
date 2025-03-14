@@ -5,6 +5,6 @@ parameters:
     excludePaths:
         - vendor
     ignoreErrors:
-        - 
-            identifier: missingType.iterableValue
+        - '#Parameter \$[a-zA-Z0-9\_]+ of method [a-zA-Z0-9\\\:\$\_]+::[a-zA-Z0-9\_]+\(\) has no value type specified in iterable type array#'
+        - '#Method [a-zA-Z0-9\\\:\$\_]+::[a-zA-Z0-9\_]+\(\) return type has no value type specified in iterable type array#'
     treatPhpDocTypesAsCertain: false 
