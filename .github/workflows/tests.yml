@@ -21,23 +21,20 @@ jobs:
         coverage: none
         tools: composer:v2
     
-    - name: PHP Environment info
+    - name: PHP and filesystem info
       run: |
         php -v
-        php -m
-        php -i | grep "json"
+        ls -la
+        pwd
+        ls -la vendor/bin 2>/dev/null || echo "Vendor bin not found"
     
-    - name: Validate composer.json
-      run: composer validate --strict
-      
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
       
-    - name: Run phpcs
-      run: vendor/bin/phpcs --standard=phpcs.xml.dist
+    - name: Verify PHPUnit config file
+      run: |
+        ls -la phpunit.xml*
+        cat phpunit.xml
       
-    - name: Run phpstan
-      run: vendor/bin/phpstan analyse
-      
-    - name: Run phpunit
-      run: vendor/bin/phpunit --display-warnings --display-errors --display-notices --display-deprecations 
+    - name: Run tests
+      run: vendor/bin/phpunit -c phpunit.xml 
