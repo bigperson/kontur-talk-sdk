@@ -9,6 +9,12 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: [8.2, 8.3, 8.4]
+      fail-fast: false
+    
+    name: PHP ${{ matrix.php }}
     
     steps:
     - uses: actions/checkout@v3
@@ -16,7 +22,7 @@ jobs:
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.2'
+        php-version: ${{ matrix.php }}
         extensions: json
         coverage: none
         tools: composer:v2
@@ -26,29 +32,14 @@ jobs:
         php -v
         ls -la
         pwd
-        ls -la vendor/bin 2>/dev/null || echo "Vendor bin not found"
     
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
       
     - name: Verify PHPUnit config files
       run: |
-        echo "Checking for phpunit.xml:"
-        ls -la phpunit.xml 2>/dev/null || echo "phpunit.xml not found"
         echo "Checking for phpunit.xml.dist:"
-        ls -la phpunit.xml.dist 2>/dev/null || echo "phpunit.xml.dist not found"
-        if [ -f phpunit.xml.dist ]; then
-          echo "Content of phpunit.xml.dist:"
-          cat phpunit.xml.dist
-        fi
+        ls -la phpunit.xml.dist
       
     - name: Run tests
-      run: |
-        if [ -f phpunit.xml.dist ]; then
-          vendor/bin/phpunit -c phpunit.xml.dist
-        elif [ -f phpunit.xml ]; then
-          vendor/bin/phpunit -c phpunit.xml
-        else
-          echo "No PHPUnit configuration file found!"
-          exit 1
-        fi 
+      run: vendor/bin/phpunit -c phpunit.xml.dist 
