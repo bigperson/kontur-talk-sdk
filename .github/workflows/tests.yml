@@ -2,35 +2,39 @@ name: Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
   tests:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        php: [8.2, 8.3, 8.4]
-
-    name: PHP ${{ matrix.php }}
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: json
-          coverage: none
-
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-progress
-
-      - name: Run tests
-        run: vendor/bin/phpunit
+    - uses: actions/checkout@v3
+    
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.4'
+        extensions: json
+        coverage: none
+        tools: composer:v2
+    
+    - name: Validate composer.json
+      run: composer validate --strict
+      
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress
+      
+    - name: Run phpcs
+      run: vendor/bin/phpcs --standard=phpcs.xml.dist
+      
+    - name: Run phpstan
+      run: vendor/bin/phpstan analyse --level=5 src
+      
+    - name: Run phpunit
+      run: vendor/bin/phpunit
 
   static-analysis:
     runs-on: ubuntu-latest

@@ -5,8 +5,8 @@ composer.lock
 
 # PHPUnit
 /phpunit.xml
-/.phpunit.result.cache
-/.phpunit.cache/
+.phpunit.result.cache
+.phpunit.cache/
 
 # PHP_CodeSniffer
 /.phpcs-cache
@@ -15,8 +15,8 @@ composer.lock
 /.phpstan-cache
 
 # IDE & System Files
-.idea/
-.vscode/
+/.idea/
+/.vscode/
 *.sublime-*
 .DS_Store
 Thumbs.db
@@ -26,4 +26,7 @@ Thumbs.db
 
 # Environment files
 .env
-.env.local 
+.env.local
+
+# PHP-CS-Fixer
+/.php-cs-fixer.cache 
