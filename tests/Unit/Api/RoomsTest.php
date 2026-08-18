@@ -2,326 +2,135 @@
 
 namespace Kontur\Talk\Tests\Unit\Api;
 
-use DateTime;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
 use Kontur\Talk\Api\Rooms;
-use Kontur\Talk\TalkClient;
-use Mockery;
-use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
-use PHPUnit\Framework\TestCase;
+use Kontur\Talk\Exception\TalkNotFoundException;
 
-class RoomsTest extends TestCase
+class RoomsTest extends ApiTestCase
 {
-    use MockeryPHPUnitIntegration;
-
-    private TalkClient $clientMock;
-    private Rooms $roomsApi;
-
-    protected function setUp(): void
+    public function testGetCallsCorrectEndpointAndDecodesResponse(): void
     {
-        $this->clientMock = Mockery::mock(TalkClient::class);
-        $this->roomsApi = new Rooms($this->clientMock);
+        // Форма ответа — TalkRoom из OpenAPI-спеки
+        $response = [
+            'roomName' => 'sales-room',
+            'title' => 'Комната продаж',
+            'description' => null,
+            'stageConferenceId' => 'stage-1',
+            'conferenceId' => 'conf-1',
+            'securityType' => 'pinCode',
+            'pinCode' => '1234',
+            'allowAnonymous' => true,
+            'anonymousAccessExpirationDate' => '2026-09-01T00:00:00Z',
+            'enableLobby' => false,
+            'audioPolicy' => 'none',
+            'videoPolicy' => 'none',
+            'screenSharePolicy' => 'none',
+        ];
+
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $rooms = new Rooms($client);
+
+        $result = $rooms->get('sales-room');
+
+        $this->assertEquals($response, $result);
+
+        $request = $this->lastRequest($history);
+        $this->assertSame('GET', $request->getMethod());
+        $this->assertSame('/api/Rooms/sales-room', $request->getUri()->getPath());
     }
 
-    public function testGetAllWithDefaultParameters(): void
+    public function testGetThrowsNotFoundOn404(): void
     {
-        $expectedResponse = [
-            'rooms' => [
-                [
-                    'roomId' => '1234567890abcdef',
-                    'title' => 'Test Room',
-                    'creationTime' => '2023-06-01T12:00:00Z'
-                ]
-            ],
-            'offset' => 'next-page-token'
-        ];
+        $this->expectException(TalkNotFoundException::class);
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('rooms', [
-                'top' => 100
-            ])
-            ->andReturn($expectedResponse);
+        $exception = new ClientException(
+            'Not found',
+            new Request('GET', 'Rooms/missing-room'),
+            new Response(404)
+        );
 
-        $result = $this->roomsApi->getAll();
+        $client = $this->mockClient([$exception]);
+        $rooms = new Rooms($client);
 
-        $this->assertEquals($expectedResponse, $result);
+        $rooms->get('missing-room');
     }
 
-    public function testGetAllWithCustomParameters(): void
+    public function testCreateOrUpdateSendsPutWithBodyVerbatim(): void
     {
-        $expectedResponse = [
-            'rooms' => [
-                [
-                    'roomId' => '1234567890abcdef',
-                    'title' => 'Test Room',
-                    'creationTime' => '2023-06-01T12:00:00Z'
-                ]
-            ],
-            'offset' => 'next-page-token'
+        $params = [
+            'title' => 'Комната продаж',
+            'description' => 'Описание',
+            'moderatorKeys' => ['user-1', 'user-2'],
+            'allowAnonymous' => true,
+            'anonymousAccessExpirationDate' => '2026-09-01T00:00:00Z',
+            'enableLobby' => true,
+            'audioPolicy' => 'none',
+            'videoPolicy' => 'muted',
+            'screenSharePolicy' => 'disabled',
         ];
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('rooms', [
-                'top' => 50,
-                'offset' => 'page-token',
-                'title' => 'Test'
-            ])
-            ->andReturn($expectedResponse);
+        $response = array_merge($params, [
+            'roomName' => 'sales-room',
+            'stageConferenceId' => 'stage-1',
+            'conferenceId' => 'conf-1',
+            'securityType' => 'none',
+            'pinCode' => null,
+        ]);
 
-        $result = $this->roomsApi->getAll(50, 'page-token', 'Test');
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $rooms = new Rooms($client);
 
-        $this->assertEquals($expectedResponse, $result);
+        $result = $rooms->createOrUpdate('sales-room', $params);
+
+        $this->assertEquals($response, $result);
+
+        $request = $this->lastRequest($history);
+        $this->assertSame('PUT', $request->getMethod());
+        $this->assertSame('/api/Rooms/sales-room', $request->getUri()->getPath());
+        $this->assertSame($params, $this->jsonBody($request));
     }
 
-    public function testGetByIdCallsCorrectEndpoint(): void
+    public function testSetPinCodeSendsPinCodeInBody(): void
     {
-        $roomId = '1234567890abcdef';
-        $expectedResponse = [
-            'roomId' => $roomId,
-            'title' => 'Test Room',
-            'creationTime' => '2023-06-01T12:00:00Z'
-        ];
+        $history = [];
+        $client = $this->mockClient([new Response(200)], $history);
+        $rooms = new Rooms($client);
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with("rooms/{$roomId}")
-            ->andReturn($expectedResponse);
+        $rooms->setPinCode('sales-room', '123456');
 
-        $result = $this->roomsApi->getById($roomId);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame('POST', $request->getMethod());
+        $this->assertSame('/api/Rooms/sales-room/lock', $request->getUri()->getPath());
+        $this->assertSame(['pinCode' => '123456'], $this->jsonBody($request));
     }
 
-    public function testCreateReturnsCreatedRoom(): void
+    public function testSetPinCodeWithNullClearsPinCode(): void
     {
-        $roomData = [
-            'title' => 'New Room',
-            'isPrivate' => true,
-            'timezone' => 'Europe/Moscow',
-        ];
+        $history = [];
+        $client = $this->mockClient([new Response(200)], $history);
+        $rooms = new Rooms($client);
 
-        $expectedResponse = [
-            'roomId' => '0987654321fedcba',
-            'title' => 'New Room',
-            'isPrivate' => true,
-            'timezone' => 'Europe/Moscow',
-            'creationTime' => '2023-06-01T12:00:00Z'
-        ];
+        $rooms->setPinCode('sales-room', null);
 
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with('rooms', $roomData)
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->create($roomData);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame(['pinCode' => null], $this->jsonBody($request));
     }
 
-    public function testUpdateCallsCorrectEndpoint(): void
+    public function testEndConferenceCallsCorrectEndpointWithEmptyBody(): void
     {
-        $roomId = '1234567890abcdef';
-        $updateData = [
-            'title' => 'Updated Room',
-            'isPrivate' => false
-        ];
+        $history = [];
+        $client = $this->mockClient([new Response(200)], $history);
+        $rooms = new Rooms($client);
 
-        $expectedResponse = [
-            'roomId' => $roomId,
-            'title' => 'Updated Room',
-            'isPrivate' => false,
-            'creationTime' => '2023-06-01T12:00:00Z'
-        ];
+        $rooms->endConference('sales-room');
 
-        $this->clientMock->shouldReceive('put')
-            ->once()
-            ->with("rooms/{$roomId}", $updateData)
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->update($roomId, $updateData);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testDeleteCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $expectedResponse = [];
-
-        $this->clientMock->shouldReceive('delete')
-            ->once()
-            ->with("rooms/{$roomId}")
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->delete($roomId);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testGetParticipantsCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $expectedResponse = [
-            'participants' => [
-                [
-                    'userId' => '123456',
-                    'displayName' => 'Test User',
-                    'email' => 'test@example.com',
-                    'role' => 'presenter'
-                ]
-            ]
-        ];
-
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with("rooms/{$roomId}/participants")
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->getParticipants($roomId);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testAddParticipantsCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $participants = [
-            [
-                'email' => 'user1@example.com',
-                'role' => 'presenter'
-            ],
-            [
-                'email' => 'user2@example.com',
-                'role' => 'attendee'
-            ]
-        ];
-
-        $expectedResponse = [
-            'participants' => [
-                [
-                    'userId' => '123456',
-                    'displayName' => 'User 1',
-                    'email' => 'user1@example.com',
-                    'role' => 'presenter'
-                ],
-                [
-                    'userId' => '789012',
-                    'displayName' => 'User 2',
-                    'email' => 'user2@example.com',
-                    'role' => 'attendee'
-                ]
-            ]
-        ];
-
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with("rooms/{$roomId}/participants", ['participants' => $participants])
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->addParticipants($roomId, $participants);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testUpdateParticipantCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $userId = '123456';
-        $updateData = [
-            'role' => 'presenter'
-        ];
-
-        $expectedResponse = [
-            'userId' => $userId,
-            'displayName' => 'Test User',
-            'email' => 'test@example.com',
-            'role' => 'presenter'
-        ];
-
-        $this->clientMock->shouldReceive('put')
-            ->once()
-            ->with("rooms/{$roomId}/participants/{$userId}", $updateData)
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->updateParticipant($roomId, $userId, $updateData);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testRemoveParticipantCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $userId = '123456';
-        $expectedResponse = [];
-
-        $this->clientMock->shouldReceive('delete')
-            ->once()
-            ->with("rooms/{$roomId}/participants/{$userId}")
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->removeParticipant($roomId, $userId);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testStartCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $expectedResponse = [
-            'roomId' => $roomId,
-            'status' => 'started',
-            'joinUrl' => 'https://example.com/join/room'
-        ];
-
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with("rooms/{$roomId}/start")
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->start($roomId);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testStopCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $expectedResponse = [
-            'roomId' => $roomId,
-            'status' => 'stopped'
-        ];
-
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with("rooms/{$roomId}/stop")
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->stop($roomId);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testGenerateJoinLinkCallsCorrectEndpoint(): void
-    {
-        $roomId = '1234567890abcdef';
-        $options = [
-            'userId' => '123456',
-            'displayName' => 'Test User',
-            'role' => 'presenter'
-        ];
-
-        $expectedResponse = [
-            'joinUrl' => 'https://example.com/join/room/token123456'
-        ];
-
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with("rooms/{$roomId}/joinLink", $options)
-            ->andReturn($expectedResponse);
-
-        $result = $this->roomsApi->generateJoinLink($roomId, $options);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame('POST', $request->getMethod());
+        $this->assertSame('/api/Rooms/sales-room/endconference', $request->getUri()->getPath());
+        $this->assertSame([], $this->jsonBody($request));
     }
 }

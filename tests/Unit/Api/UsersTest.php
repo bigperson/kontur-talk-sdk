@@ -2,225 +2,124 @@
 
 namespace Kontur\Talk\Tests\Unit\Api;
 
+use GuzzleHttp\Psr7\Response;
 use Kontur\Talk\Api\Users;
-use Kontur\Talk\Exception\TalkClientException;
-use Kontur\Talk\TalkClient;
-use Mockery;
-use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
-use PHPUnit\Framework\TestCase;
 
-class UsersTest extends TestCase
+class UsersTest extends ApiTestCase
 {
-    use MockeryPHPUnitIntegration;
-
-    private TalkClient $clientMock;
-    private Users $usersApi;
-
-    protected function setUp(): void
+    private function sampleUser(): array
     {
-        $this->clientMock = Mockery::mock(TalkClient::class);
-        $this->usersApi = new Users($this->clientMock);
-    }
-
-    public function testGetByKeyCallsCorrectEndpoint(): void
-    {
-        $userKey = 'test-user-key';
-        $expectedResponse = ['login' => 'testuser', 'email' => 'test@example.com'];
-
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with("users/{$userKey}")
-            ->andReturn($expectedResponse);
-
-        $result = $this->usersApi->getByKey($userKey);
-
-        $this->assertEquals($expectedResponse, $result);
+        // Форма ответа — TalkUser из OpenAPI-спеки (только поля, которые использует потребитель SDK)
+        return [
+            'key' => 'user-1',
+            'email' => 'user@example.com',
+            'firstname' => 'Иван',
+            'surname' => 'Иванов',
+            'disabled' => false,
+            'userType' => 'normal',
+        ];
     }
 
     public function testScanWithDefaultParameters(): void
     {
-        $expectedResponse = ['users' => [], 'offset' => 'next-page-key'];
+        $response = ['users' => [$this->sampleUser()], 'offset' => null];
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('users/scan', [
-                'top' => 100,
-                'includeDisabled' => 'false'
-            ])
-            ->andReturn($expectedResponse);
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $users = new Users($client);
 
-        $result = $this->usersApi->scan();
+        $result = $users->scan();
 
-        $this->assertEquals($expectedResponse, $result);
+        $this->assertEquals($response, $result);
+
+        $request = $this->lastRequest($history);
+        $this->assertSame('GET', $request->getMethod());
+        $this->assertSame('/api/Users/scan', $request->getUri()->getPath());
+        $this->assertSame([
+            'includeDisabled' => 'false',
+            'includeGuests' => 'false',
+        ], $this->queryParams($request));
     }
 
     public function testScanWithCustomParameters(): void
     {
-        $expectedResponse = ['users' => [], 'offset' => 'next-page-key'];
+        $response = ['users' => [], 'offset' => 'next-page-key'];
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('users/scan', [
-                'top' => 50,
-                'includeDisabled' => 'true',
-                'offset' => 'page-key',
-                'role' => 'admin'
-            ])
-            ->andReturn($expectedResponse);
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $users = new Users($client);
 
-        $result = $this->usersApi->scan(50, 'page-key', 'admin', true);
+        $result = $users->scan('page-key', 50, true, true);
 
-        $this->assertEquals($expectedResponse, $result);
+        $this->assertEquals($response, $result);
+
+        $request = $this->lastRequest($history);
+        $this->assertSame([
+            'includeDisabled' => 'true',
+            'includeGuests' => 'true',
+            'offset' => 'page-key',
+            'top' => '50',
+        ], $this->queryParams($request));
     }
 
-    public function testScanTopIsLimitedTo1000(): void
+    public function testSearchPassesFiltersThroughAsQueryIncludingRepeatedEmail(): void
     {
-        $expectedResponse = ['users' => [], 'offset' => 'next-page-key'];
+        $response = ['users' => [$this->sampleUser()]];
 
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('users/scan', [
-                'top' => 1000, // Should be limited to 1000 even if higher value is provided
-                'includeDisabled' => 'false'
-            ])
-            ->andReturn($expectedResponse);
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $users = new Users($client);
 
-        $result = $this->usersApi->scan(2000);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testGetWithDefaultParameters(): void
-    {
-        $expectedResponse = ['users' => []];
-
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('users', [
-                'top' => 100,
-                'skip' => 0,
-                'includeDisabled' => 'false',
-                'fillInMeetingStatus' => 'false'
-            ])
-            ->andReturn($expectedResponse);
-
-        $result = $this->usersApi->get();
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testGetWithCustomParameters(): void
-    {
-        $expectedResponse = ['users' => []];
-        $emails = ['user1@example.com', 'user2@example.com'];
-
-        $this->clientMock->shouldReceive('get')
-            ->once()
-            ->with('users', [
-                'top' => 50,
-                'skip' => 10,
-                'includeDisabled' => 'true',
-                'fillInMeetingStatus' => 'true',
-                'query' => 'search term',
-                'role' => 'admin',
-                'email' => $emails
-            ])
-            ->andReturn($expectedResponse);
-
-        $result = $this->usersApi->get(50, 10, 'search term', $emails, 'admin', true, true);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testCreateOrUpdateThrowsExceptionWhenTooManyUsers(): void
-    {
-        $this->expectException(TalkClientException::class);
-
-        $users = array_fill(0, 31, ['email' => 'test@example.com']);
-
-        $this->usersApi->createOrUpdate($users);
-    }
-
-    public function testCreateOrUpdateCallsCorrectEndpoint(): void
-    {
-        $users = [
-            [
-                'email' => 'user1@example.com',
-                'firstname' => 'User',
-                'surname' => 'One'
-            ]
+        $filters = [
+            'query' => 'Иван',
+            'email' => ['user1@example.com', 'user2@example.com'],
+            'role' => 'admin',
+            'top' => 50,
+            'skip' => 10,
         ];
 
-        $expectedResponse = ['users' => $users];
+        $result = $users->search($filters);
 
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with('users', $users)
-            ->andReturn($expectedResponse);
+        $this->assertEquals($response, $result);
 
-        $result = $this->usersApi->createOrUpdate($users);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame('GET', $request->getMethod());
+        $this->assertSame('/api/Users', $request->getUri()->getPath());
+        $this->assertSame([
+            'query' => 'Иван',
+            'email' => ['user1@example.com', 'user2@example.com'],
+            'role' => 'admin',
+            'top' => '50',
+            'skip' => '10',
+        ], $this->queryParams($request));
     }
 
-    public function testSetPermissionsCallsCorrectEndpoint(): void
+    public function testSearchWithNoFiltersSendsNoQuery(): void
     {
-        $userKey = 'test-user-key';
-        $disabled = true;
-        $expectedResponse = [];
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode(['users' => []]))], $history);
+        $users = new Users($client);
 
-        $this->clientMock->shouldReceive('put')
-            ->once()
-            ->with("users/{$userKey}/permissions", ['disabled' => $disabled])
-            ->andReturn($expectedResponse);
+        $users->search();
 
-        $result = $this->usersApi->setPermissions($userKey, $disabled);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame('', $request->getUri()->getQuery());
     }
 
-    public function testDeleteCallsCorrectEndpoint(): void
+    public function testGetByKeyCallsCorrectEndpoint(): void
     {
-        $userKey = 'test-user-key';
-        $expectedResponse = [];
+        $response = $this->sampleUser();
 
-        $this->clientMock->shouldReceive('delete')
-            ->once()
-            ->with("users/{$userKey}")
-            ->andReturn($expectedResponse);
+        $history = [];
+        $client = $this->mockClient([new Response(200, [], json_encode($response))], $history);
+        $users = new Users($client);
 
-        $result = $this->usersApi->delete($userKey);
+        $result = $users->getByKey('user-1');
 
-        $this->assertEquals($expectedResponse, $result);
-    }
+        $this->assertEquals($response, $result);
 
-    public function testSyncAvatarCallsCorrectEndpoint(): void
-    {
-        $userKey = 'test-user-key';
-        $expectedResponse = [];
-
-        $this->clientMock->shouldReceive('post')
-            ->once()
-            ->with("users/{$userKey}/avatar/sync")
-            ->andReturn($expectedResponse);
-
-        $result = $this->usersApi->syncAvatar($userKey);
-
-        $this->assertEquals($expectedResponse, $result);
-    }
-
-    public function testDeleteAvatarCallsCorrectEndpoint(): void
-    {
-        $userKey = 'test-user-key';
-        $expectedResponse = [];
-
-        $this->clientMock->shouldReceive('delete')
-            ->once()
-            ->with("users/{$userKey}/avatar")
-            ->andReturn($expectedResponse);
-
-        $result = $this->usersApi->deleteAvatar($userKey);
-
-        $this->assertEquals($expectedResponse, $result);
+        $request = $this->lastRequest($history);
+        $this->assertSame('GET', $request->getMethod());
+        $this->assertSame('/api/Users/user-1', $request->getUri()->getPath());
     }
 }

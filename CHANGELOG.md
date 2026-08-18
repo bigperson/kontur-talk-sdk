@@ -5,6 +5,48 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-18
+
+Полный рерайт SDK по официальной OpenAPI-спецификации Kontur.Talk ("Talk API", 103 путей).
+Прежняя версия использовала пути и модели, придуманные "по аналогии" и не существующие
+в реальном API — это ломающее изменение приводит публичную поверхность SDK в соответствие
+со спецификацией.
+
+### Изменено (ломающе)
+- `Api\Rooms`: методы сведены к `get()`, `createOrUpdate()`, `setPinCode()`, `endConference()` —
+  ровно тому, что есть в спецификации (`GET/PUT /api/Rooms/{roomName}`,
+  `POST /api/Rooms/{roomName}/lock`, `POST /api/Rooms/{roomName}/endconference`).
+  `createOrUpdate()` теперь принимает тело `array $params` вместо списка позиционных аргументов
+- `Api\Recordings`: полностью пересобран под `Domain/recordings`, `Recordings/{key}/access`,
+  `recordings/{key}/transcript`, `recordings/{key}/summary/{type}`, `recordings/v2/{key}/summary`
+  (регистр путей — как в спецификации, разные пути не унифицированы)
+- `Api\Users`: сведён к `scan()`, `search()`, `getByKey()` — по `/api/Users/scan`, `/api/Users`,
+  `/api/Users/{userKey}`
+- `TalkClient`: добавлен `patch()`; ответ с пустым телом (200/204) по-прежнему возвращается как `[]`;
+  добавлены `downloadUrl()` и `download()` для `GET /api/Recordings/{recordingKey}/file` (адрес
+  файла без скачивания и потоковое скачивание тела соответственно)
+- Ответы всех методов остаются декодированным JSON (`array`) — DTO-слоя как не было, так и нет
+
+### Добавлено
+- `Api\Calendar` — встречи в календаре организатора: `createEvent()`, `listEvents()`,
+  `updateEvent()`, `deleteEvent()`, `updateAttendees()` (`/api/EmailCalendar/{email}/...`)
+- `Api\ConferencesHistory` — история конференций: `list()` (батчевый опрос комнат,
+  `roomName` — повторяющийся query-параметр), `get()`, `getArtifacts()`
+  (`/api/domain/conferencesHistory`, `/api/ConferencesHistory[/v2]/{conferenceKey}`)
+- `Api\Applications` — проверка API-ключа: `accessInfo()` (срок действия и выданные scope,
+  `/api/domain/applications/access-info`)
+- `Kontur\Talk\Enum\SummaryType`, `LinkAccessScope`, `TranscriptionStatus`, `SpeechCoreResultStatus` —
+  строковые backed enum'ы для валидации входных значений методов `Api\Recordings`
+
+### Удалено
+- `Api\Conferences`, `Api\Meetings`, `Api\Calendars`, `Api\ApiKeys`, `Api\Reports` — обращались
+  к несуществующим путям (`conferences/*`, `meetings/*`, `calendars/*`, `apikeys/*`, `reports/*`)
+- `Api\Kiosks`, `Api\Statistics`, `Api\Roles` — существуют в официальном API, но вне поддерживаемого
+  сценария этого SDK (создание комнаты → встречи в календаре → опрос истории конференций за
+  записями/транскриптом/саммари)
+- Соответствующие свойства `TalkClient` (`$conferences`, `$meetings`, `$calendars`, `$apiKeys`,
+  `$reports`, `$kiosks`, `$statistics`, `$roles`) и их тесты
+
 ## [1.0.0] - 2024-03-14
 
 ### Добавлено

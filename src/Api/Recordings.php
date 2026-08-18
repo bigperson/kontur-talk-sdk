@@ -2,75 +2,150 @@
 
 namespace Kontur\Talk\Api;
 
-use DateTime;
-use Kontur\Talk\TalkClient;
+use Kontur\Talk\Enum\LinkAccessScope;
+use Kontur\Talk\Enum\SummaryType;
+use Kontur\Talk\Exception\TalkApiException;
+use Kontur\Talk\Exception\TalkClientException;
+use Kontur\Talk\Exception\TalkNotFoundException;
+use Kontur\Talk\Exception\TalkRateLimitException;
 
+/**
+ * API для работы с записями (`/api/Domain/recordings`, `/api/Recordings`, `/api/recordings`).
+ *
+ * Регистр в путях сохранён как в спецификации: `Domain/recordings`, `Recordings/{key}/access`,
+ * `recordings/{key}/transcript` — это разные (хотя и похожие) endpoint'ы, а не опечатки.
+ */
 class Recordings extends ApiClient
 {
     /**
-     * Получить список записей
+     * Получает список записей пространства
      *
-     * @param int|null $top Максимальное количество возвращаемых записей
-     * @param string|null $offset Токен для постраничной загрузки
-     * @param DateTime|null $startTime Начальное время для фильтрации
-     * @param DateTime|null $endTime Конечное время для фильтрации
-     * @return array
+     * @param array $filters Query-параметры: startFrom, startTo, pageTokenString, query, title, top,
+     *              orderMode и другие поля спецификации (например maxParticipantCount)
+     * @return array TalkPage: {entities: TalkDomainConferenceRecording[], nextPageToken, prevPageToken}
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkRateLimitException
      */
-    public function getAll(
-        ?int $top = 100,
-        ?string $offset = null,
-        ?DateTime $startTime = null,
-        ?DateTime $endTime = null
-    ): array {
-        $params = [
-            'top' => $top
+    public function listDomain(array $filters = []): array
+    {
+        return $this->client->get('Domain/recordings/v2', $filters);
+    }
+
+    /**
+     * Получает запись пространства по ключу
+     *
+     * @param string $recordingKey Ключ записи
+     * @return array TalkDomainConferenceRecording: id, key, title, createdDate, roomName,
+     *               participantsCount, size, duration, allowAnonymousAccess, ...
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
+     */
+    public function getDomain(string $recordingKey): array
+    {
+        return $this->client->get("Domain/recordings/{$recordingKey}");
+    }
+
+    /**
+     * Получает права доступа к записи
+     *
+     * @param string $recordingKey Ключ записи
+     * @return array RecordsResourceAccessResponse: {userAccesses: [{user, roleId}], linkAccess: {scope}}
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
+     */
+    public function getAccess(string $recordingKey): array
+    {
+        return $this->client->get("Recordings/{$recordingKey}/access");
+    }
+
+    /**
+     * Обновляет права доступа к записи
+     *
+     * @param string $recordingKey Ключ записи
+     * @param array $userAccesses Список {userKey, roleId}
+     * @param string|null $linkScope Область ссылочного доступа — значение {@see LinkAccessScope};
+     *              null — не менять текущее значение
+     * @param bool $forceUpdate Принудительно применить изменения
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
+     */
+    public function patchAccess(
+        string $recordingKey,
+        array $userAccesses,
+        ?string $linkScope = null,
+        bool $forceUpdate = false
+    ): void {
+        if ($linkScope !== null) {
+            LinkAccessScope::from($linkScope);
+        }
+
+        $data = [
+            'userAccesses' => $userAccesses,
+            'forceUpdate' => $forceUpdate,
         ];
 
-        if ($offset !== null) {
-            $params['offset'] = $offset;
+        if ($linkScope !== null) {
+            $data['linkAccess'] = ['scope' => $linkScope];
         }
 
-        if ($startTime !== null) {
-            $params['startTime'] = $startTime->format('Y-m-d\TH:i:s.v\Z');
-        }
-
-        if ($endTime !== null) {
-            $params['endTime'] = $endTime->format('Y-m-d\TH:i:s.v\Z');
-        }
-
-        return $this->client->get('recordings', $params);
+        $this->client->patch("Recordings/{$recordingKey}/access", $data);
     }
 
     /**
-     * Получить запись по ID
+     * Получает транскрипт записи
      *
-     * @param string $recordingId ID записи
-     * @return array
+     * @param string $recordingKey Ключ записи
+     * @return array TalkTranscript: {status, statusMessage, transcriptId, tracks: [{trackId, speaker,
+     *               chunks: [{chunkId, startTimeOffsetInMillis, endTimeOffsetInMillis, text, words[],
+     *               confidence}]}], errors[]}
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
      */
-    public function getById(string $recordingId): array
+    public function transcript(string $recordingKey): array
     {
-        return $this->client->get("recordings/{$recordingId}");
+        return $this->client->get("recordings/{$recordingKey}/transcript");
     }
 
     /**
-     * Удалить запись
+     * Получает саммари записи заданного типа
      *
-     * @param string $recordingId ID записи
-     * @return array
+     * @param string $recordingKey Ключ записи
+     * @param string $type Тип саммаризации — значение {@see SummaryType}
+     * @return array TalkSummaryV2Result: {summaryId, status, startedAt, chunks: [{type, timestamp,
+     *               version, text}], hidden}
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
      */
-    public function delete(string $recordingId): array
+    public function summary(string $recordingKey, string $type): array
     {
-        return $this->client->delete("recordings/{$recordingId}");
+        $summaryType = SummaryType::from($type);
+
+        return $this->client->get("recordings/{$recordingKey}/summary/{$summaryType->value}");
     }
 
     /**
-     * Получить ссылку для скачивания записи
+     * Получает составной результат SpeechCore: транскрипт + оба типа саммари
      *
-     * @param string $recordingId ID записи
-     * @return array
+     * @param string $recordingKey Ключ записи
+     * @return array TalkCompositeSpeechCoreResult: {transcriptionV2, shortSummaryV2, protocolV2}
+     * @throws TalkApiException
+     * @throws TalkClientException
+     * @throws TalkNotFoundException
+     * @throws TalkRateLimitException
      */
-    public function getDownloadLink(string $recordingId): array
+    public function composite(string $recordingKey): array
     {
-        return $this->client->get("recordings/{$recordingId}/downloadLink");
+        return $this->client->get("recordings/v2/{$recordingKey}/summary");
     }
 }

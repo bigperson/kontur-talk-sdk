@@ -7,6 +7,7 @@ use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Kontur\Talk\Exception\TalkApiException;
@@ -15,7 +16,7 @@ use Kontur\Talk\Exception\TalkNotFoundException;
 use Kontur\Talk\Exception\TalkRateLimitException;
 use Kontur\Talk\TalkClient;
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamInterface;
 use ReflectionClass;
 
 class TalkClientTest extends TestCase
@@ -96,6 +97,93 @@ class TalkClientTest extends TestCase
         $result = $mockClient->delete('test-endpoint', ['param' => 'value']);
 
         $this->assertEquals($expectedData, $result);
+    }
+
+    public function testPatchReturnsResponseData(): void
+    {
+        $expectedData = ['status' => 'patched'];
+        $mockClient = $this->createMockClient([
+            new Response(200, [], json_encode($expectedData))
+        ]);
+
+        $result = $mockClient->patch('test-endpoint', ['data' => 'value'], ['param' => 'value']);
+
+        $this->assertEquals($expectedData, $result);
+    }
+
+    public function testPatchEmptyResponseReturnsEmptyArray(): void
+    {
+        $mockClient = $this->createMockClient([
+            new Response(200)
+        ]);
+
+        $result = $mockClient->patch('test-endpoint', ['data' => 'value']);
+
+        $this->assertEquals([], $result);
+    }
+
+    public function testDownloadUrlReturnsLocationHeaderOn3xxWithoutFollowingRedirect(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(302, ['Location' => 'https://cdn.ktalk.ru/rec-1/900p.mp4']),
+        ], $history);
+
+        // Единственный ответ в очереди: если бы редирект был автоматически пройден,
+        // MockHandler бросил бы исключение из-за опустевшей очереди.
+        $result = $mockClient->downloadUrl('rec-1', '900p');
+
+        $this->assertSame('https://cdn.ktalk.ru/rec-1/900p.mp4', $result);
+        $this->assertCount(1, $history);
+
+        $request = $history[0]['request'];
+        $this->assertSame('GET', $request->getMethod());
+        $this->assertSame('/api/Recordings/rec-1/file', $request->getUri()->getPath());
+        $this->assertSame('qualityName=900p', $request->getUri()->getQuery());
+    }
+
+    public function testDownloadUrlReturnsRequestUriOn2xx(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(200),
+        ], $history);
+
+        $result = $mockClient->downloadUrl('rec-1');
+
+        $this->assertSame('https://' . self::SPACE . '.ktalk.ru/api/Recordings/rec-1/file', $result);
+    }
+
+    public function testDownloadUrlMapsExceptionsLikeOtherRequests(): void
+    {
+        $this->expectException(TalkNotFoundException::class);
+
+        $exception = new ClientException(
+            'Not found',
+            new Request('GET', 'Recordings/missing/file'),
+            new Response(404)
+        );
+
+        $mockClient = $this->createMockClient([$exception]);
+
+        $mockClient->downloadUrl('missing');
+    }
+
+    public function testDownloadReturnsRawBodyStream(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(200, [], 'binary-file-content'),
+        ], $history);
+
+        $result = $mockClient->download('rec-1', '900p');
+
+        $this->assertInstanceOf(StreamInterface::class, $result);
+        $this->assertSame('binary-file-content', (string) $result);
+
+        $request = $history[0]['request'];
+        $this->assertSame('/api/Recordings/rec-1/file', $request->getUri()->getPath());
+        $this->assertSame('qualityName=900p', $request->getUri()->getQuery());
     }
 
     public function testEmptyResponseReturnsEmptyArray(): void
@@ -192,6 +280,35 @@ class TalkClientTest extends TestCase
         $httpClientProp->setValue($client, $httpClient);
 
         // Initialize API instances - optional for this test as we don't use them
+
+        return $client;
+    }
+
+    /**
+     * @param array $responses Очередь ответов/исключений Guzzle
+     * @param array $history Заполняется по ссылке: каждый элемент содержит ключ 'request'
+     */
+    private function createMockClientWithHistory(array $responses, array &$history): TalkClient
+    {
+        $mock = new MockHandler($responses);
+        $handlerStack = HandlerStack::create($mock);
+        $handlerStack->push(Middleware::history($history));
+        $httpClient = new HttpClient(['handler' => $handlerStack]);
+
+        $reflection = new ReflectionClass(TalkClient::class);
+        $client = $reflection->newInstanceWithoutConstructor();
+
+        $baseUrlProp = $reflection->getProperty('baseUrl');
+        $baseUrlProp->setAccessible(true);
+        $baseUrlProp->setValue($client, "https://" . self::SPACE . ".ktalk.ru/api");
+
+        $apiKeyProp = $reflection->getProperty('apiKey');
+        $apiKeyProp->setAccessible(true);
+        $apiKeyProp->setValue($client, self::API_KEY);
+
+        $httpClientProp = $reflection->getProperty('httpClient');
+        $httpClientProp->setAccessible(true);
+        $httpClientProp->setValue($client, $httpClient);
 
         return $client;
     }

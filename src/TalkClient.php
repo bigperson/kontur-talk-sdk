@@ -4,20 +4,18 @@ namespace Kontur\Talk;
 
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\GuzzleException;
-use Kontur\Talk\Api\Users;
-use Kontur\Talk\Api\Roles;
-use Kontur\Talk\Api\Rooms;
-use Kontur\Talk\Api\Statistics;
-use Kontur\Talk\Api\Meetings;
-use Kontur\Talk\Api\Calendars;
+use GuzzleHttp\Psr7\Query;
+use Kontur\Talk\Api\Applications;
+use Kontur\Talk\Api\Calendar;
+use Kontur\Talk\Api\ConferencesHistory;
 use Kontur\Talk\Api\Recordings;
-use Kontur\Talk\Api\Kiosks;
-use Kontur\Talk\Api\ApiKeys;
-use Kontur\Talk\Api\Reports;
-use Kontur\Talk\Exception\TalkClientException;
+use Kontur\Talk\Api\Rooms;
+use Kontur\Talk\Api\Users;
 use Kontur\Talk\Exception\TalkApiException;
-use Kontur\Talk\Exception\TalkRateLimitException;
+use Kontur\Talk\Exception\TalkClientException;
 use Kontur\Talk\Exception\TalkNotFoundException;
+use Kontur\Talk\Exception\TalkRateLimitException;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * Основной класс клиента SDK для работы с API Kontur Talk
@@ -40,34 +38,19 @@ class TalkClient
     private HttpClient $httpClient;
 
     /**
-     * @var Users API для работы с пользователями
-     */
-    public Users $users;
-
-    /**
-     * @var Roles API для работы с ролями
-     */
-    public Roles $roles;
-
-    /**
      * @var Rooms API для работы с комнатами
      */
     public Rooms $rooms;
 
     /**
-     * @var Statistics API для работы со статистикой
+     * @var Calendar API для работы с календарём (создание встреч на почтовом ящике организатора)
      */
-    public Statistics $statistics;
+    public Calendar $calendar;
 
     /**
-     * @var Meetings API для работы со встречами
+     * @var ConferencesHistory API для работы с историей конференций
      */
-    public Meetings $meetings;
-
-    /**
-     * @var Calendars API для работы с календарями
-     */
-    public Calendars $calendars;
+    public ConferencesHistory $conferencesHistory;
 
     /**
      * @var Recordings API для работы с записями
@@ -75,19 +58,14 @@ class TalkClient
     public Recordings $recordings;
 
     /**
-     * @var Kiosks API для работы с киосками
+     * @var Applications API для работы с информацией о текущем API-ключе
      */
-    public Kiosks $kiosks;
+    public Applications $applications;
 
     /**
-     * @var ApiKeys API для работы с API ключами
+     * @var Users API для работы с пользователями
      */
-    public ApiKeys $apiKeys;
-
-    /**
-     * @var Reports API для работы с отчетами
-     */
-    public Reports $reports;
+    public Users $users;
 
     /**
      * Конструктор клиента API
@@ -109,16 +87,12 @@ class TalkClient
         ]);
 
         // Инициализация API клиентов
-        $this->users = new Users($this);
-        $this->roles = new Roles($this);
         $this->rooms = new Rooms($this);
-        $this->statistics = new Statistics($this);
-        $this->meetings = new Meetings($this);
-        $this->calendars = new Calendars($this);
+        $this->calendar = new Calendar($this);
+        $this->conferencesHistory = new ConferencesHistory($this);
         $this->recordings = new Recordings($this);
-        $this->kiosks = new Kiosks($this);
-        $this->apiKeys = new ApiKeys($this);
-        $this->reports = new Reports($this);
+        $this->applications = new Applications($this);
+        $this->users = new Users($this);
     }
 
     /**
@@ -184,6 +158,29 @@ class TalkClient
     }
 
     /**
+     * Отправляет PATCH запрос к API
+     *
+     * @param string $endpoint Конечная точка API
+     * @param array $data Данные для отправки
+     * @param array $params Параметры запроса
+     * @return array Ответ API
+     * @throws TalkClientException
+     * @throws TalkApiException
+     * @throws TalkRateLimitException
+     * @throws TalkNotFoundException
+     */
+    public function patch(string $endpoint, array $data = [], array $params = []): array
+    {
+        $options = ['json' => $data];
+
+        if (!empty($params)) {
+            $options['query'] = $params;
+        }
+
+        return $this->request('PATCH', $endpoint, $options);
+    }
+
+    /**
      * Отправляет DELETE запрос к API
      *
      * @param string $endpoint Конечная точка API
@@ -200,9 +197,90 @@ class TalkClient
     }
 
     /**
+     * Возвращает адрес для скачивания файла записи, не скачивая сам файл.
+     *
+     * Запрос выполняется с отключёнными редиректами: если API отвечает 3xx,
+     * возвращается заголовок `Location`; если 2xx — возвращается адрес самого запроса
+     * (редиректа не произошло, файл отдаётся напрямую по этому адресу).
+     *
+     * @param string $recordingKey Ключ записи
+     * @param string|null $quality Качество видео (например, "900p"), null — без фильтра
+     * @return string Адрес для скачивания файла
+     * @throws TalkClientException
+     * @throws TalkApiException
+     * @throws TalkRateLimitException
+     * @throws TalkNotFoundException
+     */
+    public function downloadUrl(string $recordingKey, ?string $quality = null): string
+    {
+        $url = $this->fileUrl($recordingKey, $quality);
+
+        try {
+            $response = $this->httpClient->request('GET', $url, ['allow_redirects' => false]);
+        } catch (GuzzleException $e) {
+            throw $this->mapException($e);
+        }
+
+        $statusCode = $response->getStatusCode();
+
+        if ($statusCode >= 300 && $statusCode < 400) {
+            return $response->getHeaderLine('Location');
+        }
+
+        return $url;
+    }
+
+    /**
+     * Скачивает файл записи и возвращает поток с его содержимым.
+     *
+     * @param string $recordingKey Ключ записи
+     * @param string|null $quality Качество видео (например, "900p"), null — без фильтра
+     * @return StreamInterface Поток с телом файла
+     * @throws TalkClientException
+     * @throws TalkApiException
+     * @throws TalkRateLimitException
+     * @throws TalkNotFoundException
+     */
+    public function download(string $recordingKey, ?string $quality = null): StreamInterface
+    {
+        $url = $this->fileUrl($recordingKey, $quality);
+
+        try {
+            $response = $this->httpClient->request('GET', $url);
+        } catch (GuzzleException $e) {
+            throw $this->mapException($e);
+        }
+
+        return $response->getBody();
+    }
+
+    /**
+     * Строит адрес `GET /api/Recordings/{recordingKey}/file` с опциональным query-параметром qualityName.
+     *
+     * В спецификации `qualityName` заявлен как сегмент пути (`.../file/{qualityName}`), но объявлен
+     * как query-параметр (`in: query`) без соответствующего path-параметра — несогласованность самой
+     * спецификации. Единственное трактование, по которому клиент вообще может подставить значение,
+     * это query: `?qualityName=...`.
+     *
+     * @param string $recordingKey Ключ записи
+     * @param string|null $quality Качество видео, null — без фильтра
+     * @return string Полный адрес файла
+     */
+    private function fileUrl(string $recordingKey, ?string $quality): string
+    {
+        $url = $this->baseUrl . '/Recordings/' . rawurlencode($recordingKey) . '/file';
+
+        if ($quality !== null) {
+            $url .= '?' . Query::build(['qualityName' => $quality]);
+        }
+
+        return $url;
+    }
+
+    /**
      * Отправляет запрос к API
      *
-     * @param string $method Метод запроса (GET, POST, PUT, DELETE)
+     * @param string $method Метод запроса (GET, POST, PUT, PATCH, DELETE)
      * @param string $endpoint Конечная точка API
      * @param array $options Опции запроса
      * @return array Ответ API
@@ -225,29 +303,44 @@ class TalkClient
 
             return json_decode($body, true) ?? [];
         } catch (GuzzleException $e) {
-            $statusCode = $e->getCode();
-
-            if ($statusCode === 429) {
-                throw new TalkRateLimitException('API rate limit exceeded', 429, $e);
-            }
-
-            if ($statusCode === 404) {
-                throw new TalkNotFoundException('Resource not found', 404, $e);
-            }
-
-            if ($statusCode >= 400 && $statusCode < 500) {
-                $responseBody = '';
-                if (method_exists($e, 'getResponse') && $e->getResponse()) {
-                    $responseBody = $e->getResponse()->getBody()->getContents();
-                }
-                $errorData = json_decode($responseBody, true) ?? [];
-                $errorMessage = $errorData['errorMessage'] ?? 'API error';
-
-                throw new TalkApiException($errorMessage, $statusCode, $e);
-            }
-
-            throw new TalkClientException('API request failed: ' . $e->getMessage(), $statusCode, $e);
+            throw $this->mapException($e);
         }
+    }
+
+    /**
+     * Преобразует исключение Guzzle в исключение SDK по коду ответа.
+     *
+     * Возвращает \Exception, а не TalkClientException: TalkApiException (и его наследники
+     * TalkNotFoundException/TalkRateLimitException) — не наследники TalkClientException,
+     * это два независимых подкласса \Exception.
+     *
+     * @param GuzzleException $e
+     * @return TalkClientException|TalkApiException
+     */
+    private function mapException(GuzzleException $e): \Exception
+    {
+        $statusCode = $e->getCode();
+
+        if ($statusCode === 429) {
+            return new TalkRateLimitException('API rate limit exceeded', 429, $e);
+        }
+
+        if ($statusCode === 404) {
+            return new TalkNotFoundException('Resource not found', 404, $e);
+        }
+
+        if ($statusCode >= 400 && $statusCode < 500) {
+            $responseBody = '';
+            if (method_exists($e, 'getResponse') && $e->getResponse()) {
+                $responseBody = $e->getResponse()->getBody()->getContents();
+            }
+            $errorData = json_decode($responseBody, true) ?? [];
+            $errorMessage = $errorData['errorMessage'] ?? 'API error';
+
+            return new TalkApiException($errorMessage, $statusCode, $e);
+        }
+
+        return new TalkClientException('API request failed: ' . $e->getMessage(), $statusCode, $e);
     }
 
     /**
