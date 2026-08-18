@@ -4,7 +4,6 @@ namespace Kontur\Talk;
 
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\Psr7\Query;
 use Kontur\Talk\Api\Applications;
 use Kontur\Talk\Api\Calendar;
 use Kontur\Talk\Api\ConferencesHistory;
@@ -108,7 +107,7 @@ class TalkClient
      */
     public function get(string $endpoint, array $params = []): array
     {
-        return $this->request('GET', $endpoint, ['query' => $params]);
+        return $this->request('GET', $endpoint, ['query' => $this->buildQuery($params)]);
     }
 
     /**
@@ -125,13 +124,10 @@ class TalkClient
      */
     public function post(string $endpoint, array $data = [], array $params = []): array
     {
-        $options = ['json' => $data];
-
-        if (!empty($params)) {
-            $options['query'] = $params;
-        }
-
-        return $this->request('POST', $endpoint, $options);
+        return $this->request('POST', $endpoint, [
+            'json' => $data,
+            'query' => $this->buildQuery($params),
+        ]);
     }
 
     /**
@@ -148,13 +144,10 @@ class TalkClient
      */
     public function put(string $endpoint, array $data = [], array $params = []): array
     {
-        $options = ['json' => $data];
-
-        if (!empty($params)) {
-            $options['query'] = $params;
-        }
-
-        return $this->request('PUT', $endpoint, $options);
+        return $this->request('PUT', $endpoint, [
+            'json' => $data,
+            'query' => $this->buildQuery($params),
+        ]);
     }
 
     /**
@@ -171,13 +164,10 @@ class TalkClient
      */
     public function patch(string $endpoint, array $data = [], array $params = []): array
     {
-        $options = ['json' => $data];
-
-        if (!empty($params)) {
-            $options['query'] = $params;
-        }
-
-        return $this->request('PATCH', $endpoint, $options);
+        return $this->request('PATCH', $endpoint, [
+            'json' => $data,
+            'query' => $this->buildQuery($params),
+        ]);
     }
 
     /**
@@ -193,7 +183,7 @@ class TalkClient
      */
     public function delete(string $endpoint, array $params = []): array
     {
-        return $this->request('DELETE', $endpoint, ['query' => $params]);
+        return $this->request('DELETE', $endpoint, ['query' => $this->buildQuery($params)]);
     }
 
     /**
@@ -202,6 +192,9 @@ class TalkClient
      * Запрос выполняется с отключёнными редиректами: если API отвечает 3xx,
      * возвращается заголовок `Location`; если 2xx — возвращается адрес самого запроса
      * (редиректа не произошло, файл отдаётся напрямую по этому адресу).
+     *
+     * Реальное поведение endpoint'а не подтверждено — см. {@see self::fileUrl()} про
+     * противоречие в самой спецификации; нужен боевой прогон на пространстве с API-тарифом.
      *
      * @param string $recordingKey Ключ записи
      * @param string|null $quality Качество видео (например, "900p"), null — без фильтра
@@ -233,6 +226,9 @@ class TalkClient
     /**
      * Скачивает файл записи и возвращает поток с его содержимым.
      *
+     * Реальное поведение endpoint'а не подтверждено — см. {@see self::fileUrl()} про
+     * противоречие в самой спецификации; нужен боевой прогон на пространстве с API-тарифом.
+     *
      * @param string $recordingKey Ключ записи
      * @param string|null $quality Качество видео (например, "900p"), null — без фильтра
      * @return StreamInterface Поток с телом файла
@@ -255,12 +251,16 @@ class TalkClient
     }
 
     /**
-     * Строит адрес `GET /api/Recordings/{recordingKey}/file` с опциональным query-параметром qualityName.
+     * Строит адрес `GET /api/Recordings/{recordingKey}/file` (+ `/{qualityName}`, если качество задано).
      *
-     * В спецификации `qualityName` заявлен как сегмент пути (`.../file/{qualityName}`), но объявлен
-     * как query-параметр (`in: query`) без соответствующего path-параметра — несогласованность самой
-     * спецификации. Единственное трактование, по которому клиент вообще может подставить значение,
-     * это query: `?qualityName=...`.
+     * Спецификация сама себе противоречит: `qualityName` заявлен сегментом пути
+     * (`.../file/{qualityName}`), но при этом описан как query-параметр (`in: query`, без
+     * соответствующего path-параметра). Наиболее вероятное объяснение — маршрут контроллера
+     * действительно `{recordingKey}/file/{qualityName}` (сегмент обязателен, чтобы маршрут
+     * совпал), а сам параметр читается атрибутом `[FromQuery]`: тогда его нужно продублировать
+     * и в пути, и в query. Однозначно подтвердить это можно только боевым прогоном на
+     * пространстве с API-тарифом (сейчас его нет) — поэтому при заданном качестве SDK
+     * подставляет значение в оба места одновременно, а не выбирает одно из двух толкований.
      *
      * @param string $recordingKey Ключ записи
      * @param string|null $quality Качество видео, null — без фильтра
@@ -271,10 +271,51 @@ class TalkClient
         $url = $this->baseUrl . '/Recordings/' . rawurlencode($recordingKey) . '/file';
 
         if ($quality !== null) {
-            $url .= '?' . Query::build(['qualityName' => $quality]);
+            // rawurlencode для сегмента пути: значения вида "900 p" содержат пробел
+            $url .= '/' . rawurlencode($quality) . '?' . $this->buildQuery(['qualityName' => $quality]);
         }
 
         return $url;
+    }
+
+    /**
+     * Строит query-строку по правилам, объявленным спецификацией для повторяющихся параметров:
+     * `style: form, explode: true` (значение по умолчанию для `in: query` + `type: array`,
+     * когда `style`/`explode` не заданы явно) — то есть повтор голого ключа
+     * (`roomName=a&roomName=b`), а не индексные скобки и не пустые скобки.
+     *
+     * TalkClient передаёт params в Guzzle как есть; если положиться на встроенную сериализацию
+     * Guzzle (`GuzzleHttp\Client::applyOptions()` использует нативный `http_build_query()`),
+     * массивы уйдут в виде `roomName[0]=a&roomName[1]=b` — это валидный PHP-формат, но не тот,
+     * что объявлен в спецификации API. Поэтому строим query-строку сами и передаём её в Guzzle
+     * уже готовой строкой (Guzzle использует переданную строку как есть, если это не массив).
+     *
+     * Заодно приводит булевы значения к строкам 'true'/'false': нативные PHP bool через
+     * http_build_query() превращаются в '1'/'' (пустую строку для false), а ASP.NET Core
+     * (на нём написан сам API) ожидает буквально "true"/"false" в query-параметрах.
+     *
+     * @param array $params Параметры запроса; значение-массив — повторяющийся параметр
+     * @return string Готовая query-строка без ведущего "?" (пустая строка, если params пуст)
+     */
+    private function buildQuery(array $params): string
+    {
+        $pairs = [];
+
+        foreach ($params as $key => $value) {
+            foreach (is_array($value) ? $value : [$value] as $item) {
+                if ($item === null) {
+                    continue;
+                }
+
+                if (is_bool($item)) {
+                    $item = $item ? 'true' : 'false';
+                }
+
+                $pairs[] = rawurlencode((string) $key) . '=' . rawurlencode((string) $item);
+            }
+        }
+
+        return implode('&', $pairs);
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace Kontur\Talk\Api;
 
+use Kontur\Talk\Enum\ScopeRestrictionType;
+use Kontur\Talk\Enum\ScopeType;
 use Kontur\Talk\Exception\TalkApiException;
 use Kontur\Talk\Exception\TalkClientException;
 use Kontur\Talk\Exception\TalkRateLimitException;
@@ -19,11 +21,8 @@ class Applications extends ApiClient
      * в режим "только ссылки" (без доступа к записям/транскриптам).
      *
      * @return array TalkDomainApplicationAccessInfo: {expiredAt, scopes: [{type, restrictionType}]}
-     *               type — один из: profiles, calendar, calendarControl, rooms, reporting, kiosk,
-     *               recording, routing, onlineStats, applications, roles, corpTelephony,
-     *               spectatorRegistration, federations, redirect, streamEvents, deepfakeDetection,
-     *               surveys, webhooks, messengerStats, messengerLicense, activeRecordings;
-     *               restrictionType — read | readWrite
+     *               type — значение {@see ScopeType}; restrictionType — значение
+     *               {@see ScopeRestrictionType}
      * @throws TalkApiException
      * @throws TalkClientException
      * @throws TalkRateLimitException

@@ -58,17 +58,16 @@ abstract class ApiTestCase extends TestCase
     /**
      * Разбирает query-строку запроса в ассоциативный массив.
      *
-     * TalkClient передаёт массивы параметров в Guzzle как есть, а Guzzle сериализует их через
-     * встроенный http_build_query() — то есть повторяющиеся значения на проводе кодируются
-     * PHP-нотацией с индексами (`roomName[0]=a&roomName[1]=b`), а не голым повтором ключа
-     * (`roomName=a&roomName=b`) и не пустыми скобками (`roomName[]=a`). Поэтому для разбора
-     * используется parse_str() — она понимает именно эту нотацию и восстанавливает массив.
+     * TalkClient сам сериализует query (см. `TalkClient::buildQuery()`) в формате, объявленном
+     * спецификацией для повторяющихся параметров: голый повтор ключа (`roomName=a&roomName=b`),
+     * а не индексные скобки (`roomName[0]=a`) и не пустые скобки (`roomName[]=a`). Для разбора
+     * такой строки нужен `GuzzleHttp\Psr7\Query::parse()` — она аккумулирует повторяющиеся голые
+     * ключи в массив; нативная `parse_str()` для этого не подходит: без скобок в ключе она
+     * оставляет только последнее значение (`roomName=a&roomName=b` → `['roomName' => 'b']`).
      */
     protected function queryParams(RequestInterface $request): array
     {
-        parse_str($request->getUri()->getQuery(), $result);
-
-        return $result;
+        return \GuzzleHttp\Psr7\Query::parse($request->getUri()->getQuery());
     }
 
     /**

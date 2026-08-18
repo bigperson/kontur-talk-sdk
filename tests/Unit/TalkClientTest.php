@@ -136,9 +136,11 @@ class TalkClientTest extends TestCase
         $this->assertSame('https://cdn.ktalk.ru/rec-1/900p.mp4', $result);
         $this->assertCount(1, $history);
 
+        // Качество подставляется и сегментом пути, и query-параметром одновременно — см.
+        // докблок TalkClient::fileUrl() про противоречие в самой спецификации.
         $request = $history[0]['request'];
         $this->assertSame('GET', $request->getMethod());
-        $this->assertSame('/api/Recordings/rec-1/file', $request->getUri()->getPath());
+        $this->assertSame('/api/Recordings/rec-1/file/900p', $request->getUri()->getPath());
         $this->assertSame('qualityName=900p', $request->getUri()->getQuery());
     }
 
@@ -152,6 +154,41 @@ class TalkClientTest extends TestCase
         $result = $mockClient->downloadUrl('rec-1');
 
         $this->assertSame('https://' . self::SPACE . '.ktalk.ru/api/Recordings/rec-1/file', $result);
+    }
+
+    public function testDownloadUrlReturnsRequestUriOn2xxWithQuality(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(200),
+        ], $history);
+
+        $result = $mockClient->downloadUrl('rec-1', '900p');
+
+        $this->assertSame(
+            'https://' . self::SPACE . '.ktalk.ru/api/Recordings/rec-1/file/900p?qualityName=900p',
+            $result
+        );
+    }
+
+    public function testDownloadUrlEncodesQualityWithSpaceInBothPathAndQuery(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(200),
+        ], $history);
+
+        // Спецификация сама приводит "900 p" (с пробелом) как рекомендуемое значение качества
+        $result = $mockClient->downloadUrl('rec-1', '900 p');
+
+        $this->assertSame(
+            'https://' . self::SPACE . '.ktalk.ru/api/Recordings/rec-1/file/900%20p?qualityName=900%20p',
+            $result
+        );
+
+        $request = $history[0]['request'];
+        $this->assertSame('/api/Recordings/rec-1/file/900%20p', $request->getUri()->getPath());
+        $this->assertSame('qualityName=900%20p', $request->getUri()->getQuery());
     }
 
     public function testDownloadUrlMapsExceptionsLikeOtherRequests(): void
@@ -182,8 +219,22 @@ class TalkClientTest extends TestCase
         $this->assertSame('binary-file-content', (string) $result);
 
         $request = $history[0]['request'];
-        $this->assertSame('/api/Recordings/rec-1/file', $request->getUri()->getPath());
+        $this->assertSame('/api/Recordings/rec-1/file/900p', $request->getUri()->getPath());
         $this->assertSame('qualityName=900p', $request->getUri()->getQuery());
+    }
+
+    public function testDownloadWithoutQualityRequestsPlainFilePath(): void
+    {
+        $history = [];
+        $mockClient = $this->createMockClientWithHistory([
+            new Response(200, [], 'binary-file-content'),
+        ], $history);
+
+        $mockClient->download('rec-1');
+
+        $request = $history[0]['request'];
+        $this->assertSame('/api/Recordings/rec-1/file', $request->getUri()->getPath());
+        $this->assertSame('', $request->getUri()->getQuery());
     }
 
     public function testEmptyResponseReturnsEmptyArray(): void

@@ -67,12 +67,13 @@ class ConferencesHistoryTest extends ApiTestCase
             'take' => '50',
         ], $this->queryParams($request));
 
-        // Явно проверяем нотацию на проводе: TalkClient передаёт массив в Guzzle как есть, а тот
-        // сериализует query через http_build_query() — отсюда индексная нотация roomName[0]=...,
-        // а не голый повтор ключа и не пустые скобки roomName[]=...
+        // Явно проверяем нотацию на проводе: спецификация объявляет roomName без style/explode,
+        // то есть по умолчанию OpenAPI 3.0 (style: form, explode: true) — голый повтор ключа
+        // roomName=...&roomName=..., а не индексные скобки roomName[0]=... и не пустые скобки
+        // roomName[]=...
         $this->assertSame(
             'fromDate=2026-09-01T00%3A00%3A00Z&toDate=2026-09-30T00%3A00%3A00Z'
-                . '&roomName%5B0%5D=sales-room&roomName%5B1%5D=support-room&skip=0&take=50',
+                . '&roomName=sales-room&roomName=support-room&skip=0&take=50',
             $request->getUri()->getQuery()
         );
     }

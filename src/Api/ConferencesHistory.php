@@ -13,12 +13,15 @@ use Kontur\Talk\Exception\TalkRateLimitException;
 class ConferencesHistory extends ApiClient
 {
     /**
-     * Получает список конференций пространства за период — батчевый опрос комнат
-     * (до 50 комнат за один вызов).
+     * Получает список конференций пространства за период — батчевый опрос комнат.
      *
      * @param string|null $fromDate Начало периода (ISO 8601)
      * @param string|null $toDate Конец периода (ISO 8601)
-     * @param array $roomNames Список ключей комнат — передаётся повторяющимся query-параметром roomName
+     * @param array $roomNames Список ключей комнат — передаётся повторяющимся query-параметром
+     *              roomName (`roomName=a&roomName=b`, как объявлено спецификацией: `style: form,
+     *              explode: true` — значение по умолчанию для query-массива без явного style/explode).
+     *              Спецификация ограничивает список `maxItems: 50`; SDK это не проверяет и не
+     *              режет на страницы сам — за пагинацию батчей отвечает вызывающий код
      * @param int|null $skip Количество пропускаемых записей
      * @param int|null $take Максимальное количество записей
      * @return array TalkConferenceInfos: {conferences: [{key, roomName, startTime, endTime, title,

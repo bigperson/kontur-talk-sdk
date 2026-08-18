@@ -3,6 +3,8 @@
 namespace Kontur\Talk\Tests\Unit\Enum;
 
 use Kontur\Talk\Enum\LinkAccessScope;
+use Kontur\Talk\Enum\ScopeRestrictionType;
+use Kontur\Talk\Enum\ScopeType;
 use Kontur\Talk\Enum\SpeechCoreResultStatus;
 use Kontur\Talk\Enum\SummaryType;
 use Kontur\Talk\Enum\TranscriptionStatus;
@@ -51,6 +53,45 @@ class EnumsTest extends TestCase
                 'recreateInProgress',
             ],
             array_column(SpeechCoreResultStatus::cases(), 'value')
+        );
+    }
+
+    public function testScopeTypeValues(): void
+    {
+        $this->assertSame(
+            [
+                'profiles',
+                'calendar',
+                'calendarControl',
+                'rooms',
+                'reporting',
+                'kiosk',
+                'recording',
+                'routing',
+                'onlineStats',
+                'applications',
+                'roles',
+                'corpTelephony',
+                'spectatorRegistration',
+                'federations',
+                'redirect',
+                'streamEvents',
+                'deepfakeDetection',
+                'surveys',
+                'webhooks',
+                'messengerStats',
+                'messengerLicense',
+                'activeRecordings',
+            ],
+            array_column(ScopeType::cases(), 'value')
+        );
+    }
+
+    public function testScopeRestrictionTypeValues(): void
+    {
+        $this->assertSame(
+            ['read', 'readWrite'],
+            array_column(ScopeRestrictionType::cases(), 'value')
         );
     }
 
