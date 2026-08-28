@@ -5,6 +5,26 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Добавлено
+- `Api\Webhooks` — вебхуки пространства: `getList()`, `create()`, `activate()`, `delete()`
+  (`GET/POST /api/Webhooks`, `POST /api/Webhooks/{webhookKey}/activate`,
+  `DELETE /api/Webhooks/{webhookKey}`). Создание асинхронное: Толк присылает `activationKey`
+  на URL вебхука, его нужно вернуть в `activate()`; лимит создания — 10 запросов в сутки
+  на пространство
+- `Api\RoomReport` — отчёт по комнате за период: `statisticsReport()`
+  (`GET /api/RoomReport/{roomName}/statistics/report`), с временем входа и выхода участников.
+  Отчёт по всему пространству (`GET /api/RoomReport/statistics`) не вынесен — отдаёт xlsx,
+  а не JSON
+- `Kontur\Talk\Enum\WebhookEventType` — типы событий вебхука; `webhooks->create()` проверяет
+  значения `events[]` до отправки запроса
+- Контракт доставки событий описан в докблоке `Api\Webhooks` и в README: обязательные поля
+  `eventId`/`eventType`/`time`, состав дополнительных полей по типам, требование ответить 200
+  за 5 секунд и расхождение регистра (подписка — camelCase, доставленный `eventType` —
+  PascalCase). Разбор входящих запросов остаётся на принимающей стороне, кода в SDK не добавляет
+- Свойства `TalkClient`: `$webhooks`, `$roomReport`
+
 ## [2.0.0] - 2026-08-18
 
 Полный рерайт SDK по официальной OpenAPI-спецификации Kontur.Talk ("Talk API", 103 путей).

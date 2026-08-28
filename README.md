@@ -13,7 +13,7 @@
 
 Начиная с версии 2.0.0 SDK выровнен по официальной OpenAPI-спецификации Kontur.Talk и покрывает
 только те endpoint'ы, что нужны для сценария "комната → встреча в календаре → опрос истории
-конференций за записями/транскриптом/саммари". Пути и регистр букв в них взяты из спецификации
+конференций за записями/транскриптом/саммари", плюс вебхуки и отчёт по комнате. Пути и регистр букв в них взяты из спецификации
 дословно (например, `Domain/recordings`, `Recordings/{key}/access`, `recordings/{key}/transcript` —
 это разные endpoint'ы, а не опечатки). Ответы возвращаются как декодированный JSON (`array`) без
 DTO-слоя — так методы SDK не расходятся со спецификацией со временем.
@@ -193,6 +193,86 @@ $found = $client->users->search([
 $user = $client->users->getByKey('user-key');
 ```
 
+### Вебхуки (`$client->webhooks`)
+
+Требуют разрешения `application.webhooks.read` / `application.webhooks.write` у API-ключа.
+Создание вебхука — асинхронное: Толк присылает на указанный `url` запрос с телом
+`{"activationKey": "..."}`, и до вызова `activate()` с этим ключом события не приходят.
+На создание действует лимит — 10 запросов в сутки на пространство (сверх лимита API отвечает
+429, SDK бросает `TalkRateLimitException`).
+
+```php
+use Kontur\Talk\Enum\WebhookEventType;
+
+// Список активных вебхуков пространства
+$webhooks = $client->webhooks->getList();
+
+// Создание вебхука
+$webhook = $client->webhooks->create([
+    'title' => 'Записи в CRM',
+    'url' => 'https://example.com/talk/webhook',
+    'events' => [
+        WebhookEventType::RecordingCompleted->value,
+        WebhookEventType::ConferencesFinished->value,
+    ],
+    'customHeaders' => [
+        ['name' => 'X-Project-Token', 'value' => 'secret'],
+    ],
+]);
+
+echo $webhook['webhookKey'];
+var_dump($webhook['activated']); // false — ждём ключ активации на своём URL
+
+// Активация ключом, пришедшим на URL вебхука
+$client->webhooks->activate($webhook['webhookKey'], ['activationKey' => $activationKey]);
+
+// Удаление
+$client->webhooks->delete($webhook['webhookKey']);
+```
+
+Разбор входящих событий SDK на себя не берёт — это дело принимающей стороны. Контракт доставки:
+тело события — JSON с обязательными `eventId`, `eventType` и `time` (ISO 8601); принимающий
+сервер обязан ответить 200 в течение 5 секунд. Дополнительные поля зависят от типа события:
+
+| `eventType` в доставке | Дополнительные поля |
+| --- | --- |
+| `ConferencesStarted` | `conferenceKey`, `roomName` |
+| `ConferencesFinished` | `conferenceKey` |
+| `RecordingCompleted` | `recordingKey` |
+| `TranscriptionReady` | `recordingKey` |
+| `UserConnectedToRoom` | `roomName`, `isAnonymous`, `userKey`, `anonymousId` |
+| `UserDisconnectedFromRoom` | `roomName`, `isAnonymous`, `userKey`, `anonymousId` |
+
+> Осторожно с регистром: в подписке (`events[]`) типы записаны в camelCase
+> (`recordingCompleted`), а в доставленном событии `eventType` приходит в PascalCase
+> (`RecordingCompleted`). Передать `eventType` из вебхука напрямую в `WebhookEventType::from()`
+> не получится — будет `\ValueError`.
+
+### Отчёты по комнатам (`$client->roomReport`)
+
+Требуют разрешения `application.reporting.read`. Даты — ISO 8601 в UTC, максимальный период —
+365 дней.
+
+```php
+// Отчёт по комнате за период (to необязателен — по умолчанию по текущее время)
+$report = $client->roomReport->statisticsReport(
+    'room-key',
+    '2026-09-01T00:00:00Z',
+    '2026-09-30T00:00:00Z'
+);
+
+echo $report['participantCount'];
+
+foreach ($report['roomParticipants'] as $participant) {
+    // exitTime приходит пустым, если участник ещё в комнате
+    echo $participant['participantName'], ' ',
+        $participant['entryTime'], ' — ', $participant['exitTime'] ?? '…', PHP_EOL;
+}
+```
+
+> Отчёт по всему пространству (`GET /api/RoomReport/statistics`) в SDK не вынесен: он отдаёт файл
+> xlsx, а не JSON, — весь транспорт SDK построен на декодировании тела ответа в массив.
+
 ## Документация
 
 Подробная документация по API доступна в официальной документации Контур.Толк.
@@ -225,8 +305,9 @@ try {
 ```
 
 Методы, принимающие значения перечислений (`Kontur\Talk\Enum\*`, например `SummaryType` в
-`recordings->summary()` или `LinkAccessScope` в `recordings->patchAccess()`), при недопустимом
-значении бросают стандартный `\ValueError` ещё до отправки запроса.
+`recordings->summary()`, `LinkAccessScope` в `recordings->patchAccess()` или `WebhookEventType`
+в `webhooks->create()`), при недопустимом значении бросают стандартный `\ValueError` ещё до
+отправки запроса.
 
 ## Требования
 

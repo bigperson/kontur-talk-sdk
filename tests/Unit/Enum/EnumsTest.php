@@ -8,6 +8,7 @@ use Kontur\Talk\Enum\ScopeType;
 use Kontur\Talk\Enum\SpeechCoreResultStatus;
 use Kontur\Talk\Enum\SummaryType;
 use Kontur\Talk\Enum\TranscriptionStatus;
+use Kontur\Talk\Enum\WebhookEventType;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -92,6 +93,21 @@ class EnumsTest extends TestCase
         $this->assertSame(
             ['read', 'readWrite'],
             array_column(ScopeRestrictionType::cases(), 'value')
+        );
+    }
+
+    public function testWebhookEventTypeValues(): void
+    {
+        $this->assertSame(
+            [
+                'recordingCompleted',
+                'transcriptionReady',
+                'userConnectedToRoom',
+                'userDisconnectedFromRoom',
+                'conferencesStarted',
+                'conferencesFinished',
+            ],
+            array_column(WebhookEventType::cases(), 'value')
         );
     }
 

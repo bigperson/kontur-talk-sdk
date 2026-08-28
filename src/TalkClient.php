@@ -8,8 +8,10 @@ use Kontur\Talk\Api\Applications;
 use Kontur\Talk\Api\Calendar;
 use Kontur\Talk\Api\ConferencesHistory;
 use Kontur\Talk\Api\Recordings;
+use Kontur\Talk\Api\RoomReport;
 use Kontur\Talk\Api\Rooms;
 use Kontur\Talk\Api\Users;
+use Kontur\Talk\Api\Webhooks;
 use Kontur\Talk\Exception\TalkApiException;
 use Kontur\Talk\Exception\TalkClientException;
 use Kontur\Talk\Exception\TalkNotFoundException;
@@ -67,6 +69,16 @@ class TalkClient
     public Users $users;
 
     /**
+     * @var Webhooks API для работы с вебхуками пространства
+     */
+    public Webhooks $webhooks;
+
+    /**
+     * @var RoomReport API для работы с отчётностью по комнатам
+     */
+    public RoomReport $roomReport;
+
+    /**
      * Конструктор клиента API
      *
      * @param string $space Пространство Kontur Talk (например, "company")
@@ -92,6 +104,8 @@ class TalkClient
         $this->recordings = new Recordings($this);
         $this->applications = new Applications($this);
         $this->users = new Users($this);
+        $this->webhooks = new Webhooks($this);
+        $this->roomReport = new RoomReport($this);
     }
 
     /**
