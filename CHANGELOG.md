@@ -5,7 +5,7 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-30
 
 ### Добавлено
 - `Api\Webhooks` — вебхуки пространства: `getList()`, `create()`, `activate()`, `delete()`
