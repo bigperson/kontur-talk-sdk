@@ -90,6 +90,8 @@ class TalkClient
         $this->apiKey = $apiKey;
 
         $this->httpClient = new HttpClient([
+            'connect_timeout' => 5,
+            'timeout' => 20,
             'headers' => [
                 'X-Auth-Token' => $this->apiKey,
                 'Content-Type' => 'application/json',

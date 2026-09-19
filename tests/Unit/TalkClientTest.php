@@ -49,6 +49,8 @@ class TalkClientTest extends TestCase
         $httpClient = $client->getHttpClient();
 
         $this->assertInstanceOf(HttpClient::class, $httpClient);
+        $this->assertSame(5, $httpClient->getConfig('connect_timeout'));
+        $this->assertSame(20, $httpClient->getConfig('timeout'));
     }
 
     public function testGetReturnsResponseData(): void
